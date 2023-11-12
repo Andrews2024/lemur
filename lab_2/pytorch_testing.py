@@ -15,7 +15,7 @@ device = (
 print(f"Using {device} device")
 
 model = NeuralNetwork().to(device)
-model.load_state_dict(torch.load("model.pth"))
+model.load_state_dict(torch.load("model.pth", map_location=torch.device('cpu')))
 
 classes = [
     "T-shirt/top",
