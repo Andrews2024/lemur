@@ -8,13 +8,10 @@ item = input("Enter the name of your item for training: ")
 print("Prep item and camera.")
 sleep(5)
 
-if not os.path.exists(item):
-    os.makedirs(item)
-    print(f"Creating directory /{item}")
-
-    # Create directories to store training data and some validation data
-    os.makedirs(item + "/train")
-    os.makedirs(item + "/validate") 
+if not os.path.exists(f"train/{item}") or not os.path.exists(f"validate/{item}"): # Make directories to store training and validation images
+    print(f"Creating training and validation directories for {item}")
+    os.makedirs(f"train/{item}")
+    os.makedirs(f"validate/{item}")
 
 # Set up the camera
 vc = cv.VideoCapture(0)
