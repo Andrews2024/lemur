@@ -25,10 +25,10 @@ if result:
         cv.imshow("Photoshoot", image)
 
         if i < 75: # Save most images to training set
-            cv.imwrite(f'{item}/train/{item}_sample_{i}.png', image) # Save image to file
+            cv.imwrite(f'train/{item}/{item}_sample_{i}.png', image) # Save image to file
 
         else: # Save a few for validation
-            cv.imwrite(f'{item}/validate/{item}_sample_{i}.png', image)
+            cv.imwrite(f'validate/{item}/{item}_sample_{i}.png', image)
 
         sleep(2) # Time for moving object/ changing its pose                
 
