@@ -7,6 +7,9 @@ from torch.optim import lr_scheduler
 from time import time
 from tempfile import TemporaryDirectory
 import os
+from matplotlib import pyplot as plt
+import numpy as np
+from PIL import Image
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     since = time()
@@ -78,6 +81,39 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
         model.load_state_dict(torch.load(best_model_params_path))
     return model
 
+def imshow(inp, title=None):
+    """Display image for Tensor."""
+    inp = inp.numpy().transpose((1, 2, 0))
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    inp = std * inp + mean
+    inp = np.clip(inp, 0, 1)
+    plt.imshow(inp)
+    if title is not None:
+        plt.title(title)
+    plt.pause(0.001)  # pause a bit so that plots are updated
+
+def visualize_model_predictions(model,img_path):
+    was_training = model.training
+    model.eval()
+
+    img = Image.open(img_path).convert('RGB')
+    img = data_transforms['validate'](img)
+    img = img.unsqueeze(0)
+    img = img.to(device)
+
+    with torch.no_grad():
+        outputs = model(img)
+        _, preds = torch.max(outputs, 1)
+
+        ax = plt.subplot(2,2,1)
+        ax.axis('off')
+        ax.set_title(f'Predicted: {class_names[preds[0]]}')
+        imshow(img.cpu().data[0])
+
+        model.train(mode=was_training)
+        plt.show()
+
 if __name__ == '__main__':
     # Set device to GPU if available, else CPU
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -116,9 +152,9 @@ if __name__ == '__main__':
     num_ftrs = model_conv.fc.in_features
     model_conv.fc = nn.Linear(num_ftrs, len(class_names))
 
-    model_conv = model_conv.to(device)
+    model_conv = model_conv.to(device) # Put the model on CPU/ GPU for training
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss() # Loss function for training
 
     # Observe that only parameters of final layer are being optimized as opposed to before.
     optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.001, momentum=0.9)
@@ -131,3 +167,8 @@ if __name__ == '__main__':
 
     # Save model
     torch.save(model_conv.state_dict(), "mobilenet_model.pth")
+
+    # Test the model with images from the internet
+    visualize_model_predictions(model_conv, "pasta-test.jpg")
+    visualize_model_predictions(model_conv, "pasta-sauce-test.png")
+    visualize_model_predictions(model_conv, "socks-test.jpg")
