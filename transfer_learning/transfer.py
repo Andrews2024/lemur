@@ -166,7 +166,7 @@ if __name__ == '__main__':
     model_conv = train_model(model_conv, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25)
 
     # Save model
-    torch.save(model_conv.state_dict(), "mobilenet_model.pth")
+    torch.save(model_conv, "transferred_model.pth")
 
     # Test the model with images from the internet
     visualize_model_predictions(model_conv, "pasta-test.jpg")
