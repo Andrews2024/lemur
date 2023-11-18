@@ -2,10 +2,10 @@ import cv2 as cv
 import os
 from time import sleep
 
-# Create 3 directories, one for each object we're training on
+# Create directory for current item
 item = input("Enter the name of your item for training: ")
 
-print("Prep item and camera.")
+print(f"Prep {item} and camera.")
 sleep(5)
 
 if not os.path.exists(f"train/{item}") or not os.path.exists(f"validate/{item}"): # Make directories to store training and validation images

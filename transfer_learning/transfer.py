@@ -67,7 +67,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 # deep copy the model
-                if phase == 'val' and epoch_acc > best_acc:
+                if phase == 'validate' and epoch_acc > best_acc:
                     best_acc = epoch_acc
                     torch.save(model.state_dict(), best_model_params_path)
 
