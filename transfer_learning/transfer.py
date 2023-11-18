@@ -4,6 +4,8 @@ from torch import nn
 from torchvision import models, transforms, datasets
 import torch.optim as optim
 from torch.optim import lr_scheduler
+from torch.utils.mobile_optimizer import optimize_for_mobile
+
 from time import time
 from tempfile import TemporaryDirectory
 import os
@@ -165,10 +167,14 @@ if __name__ == '__main__':
     # Train the model
     model_conv = train_model(model_conv, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25)
 
-    # Save model
-    torch.save(model_conv, "transferred_model.pth")
-
     # Test the model with images from the internet
     visualize_model_predictions(model_conv, "pasta-test.jpg")
-    visualize_model_predictions(model_conv, "pasta-sauce-test.png")
-    visualize_model_predictions(model_conv, "socks-test.jpg")
+    visualize_model_predictions(model_conv, "can-test.jpg")
+
+    # Save model for Raspberry Pi
+    scripted_model = torch.jit.script(model_conv)
+    mobile_model = optimize_for_mobile(scripted_model)
+    mobile_model._save_for_lite_interpreter("mobile_model.ptl")
+
+    # Save model for computer
+    torch.save(model_conv, "full_model.pth")

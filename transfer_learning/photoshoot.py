@@ -5,13 +5,13 @@ from time import sleep
 # Create directory for current item
 item = input("Enter the name of your item for training: ")
 
-print(f"Prep {item} and camera.")
-sleep(5)
-
 if not os.path.exists(f"train/{item}") or not os.path.exists(f"validate/{item}"): # Make directories to store training and validation images
     print(f"Creating training and validation directories for {item}")
     os.makedirs(f"train/{item}")
     os.makedirs(f"validate/{item}")
+
+print(f"Prep {item} and camera.")
+sleep(5)
 
 # Set up the camera
 vc = cv.VideoCapture(0)
@@ -21,6 +21,8 @@ result, image = vc.read()
 
 if result:
     for i in range(100): # Take 100 images of the item
+        print(f"Image #{i}")
+        
         result, image = vc.read() # Capture image
         cv.imshow("Photoshoot", image)
 
