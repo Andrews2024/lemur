@@ -23,7 +23,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # Load model that we trained
-    model = torch.load("transferred_model.pth").to(device)
+    model = torch.load("transferred_model.pth", map_location=torch.device('cpu')).to(device)
     model.eval()
 
     # Use the same transforms as validation
