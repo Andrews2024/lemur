@@ -1,1 +1,4 @@
 venv/
+transfer_learning/*/
+transfer_learning/*.png
+transfer_learning/*.jpg
