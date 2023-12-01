@@ -216,8 +216,6 @@ if __name__ == '__main__':
         # Convert the model to a quantized model
         new_model = convert(new_model, inplace=False)
 
-        print("here")
-
     else:
         new_model = model_conv.to(device) # Put the model on CPU/ GPU for training
 
@@ -243,7 +241,7 @@ if __name__ == '__main__':
         mobile_model._save_for_lite_interpreter("mobile_model_quantized.ptl")
 
         # Save model for computer
-        torch.save(model_conv, "full_model_quantized.pth")
+        torch.jit.save(scripted_model, "full_model_quantized.pth")
 
     else:
         # Save model for Raspberry Pi
@@ -253,3 +251,5 @@ if __name__ == '__main__':
 
         # Save model for computer
         torch.save(model_conv, "full_model_original.pth")
+
+# https://pytorch.org/tutorials/intermediate/dynamic_quantization_bert_tutorial.html#serialize-the-quantized-model

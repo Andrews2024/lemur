@@ -33,7 +33,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # Load model that we trained
-    model = torch.jit.load("mobile_model_quantized.ptl").to("cpu")
+    model = torch.jit.load("full_model_quantized.pth").to("cpu")
     model.eval()
 
     # Use the same transforms as validation
