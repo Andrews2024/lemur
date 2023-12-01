@@ -2,3 +2,6 @@ venv/
 transfer_learning/*/
 transfer_learning/*.png
 transfer_learning/*.jpg
+optimization/*/
+optimization/*.png
+optimization/*.jpg

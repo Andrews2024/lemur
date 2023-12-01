@@ -1,0 +1,255 @@
+# Based off of code from here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html, https://pytorch.org/tutorials/intermediate/quantized_transfer_learning_tutorial.html
+import torch
+from torch import nn
+from torchvision import models, transforms, datasets
+import torchvision.models.quantization as qmodels
+import torch.optim as optim
+from torch.optim import lr_scheduler
+from torch.utils.mobile_optimizer import optimize_for_mobile
+from torch.quantization import convert
+
+from time import time
+import copy
+from matplotlib import pyplot as plt
+import numpy as np
+from PIL import Image
+
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, device='cpu'):
+  """
+  Support function for model training.
+
+  Args:
+    model: Model to be trained
+    criterion: Optimization criterion (loss)
+    optimizer: Optimizer to use for training
+    scheduler: Instance of ``torch.optim.lr_scheduler``
+    num_epochs: Number of epochs
+    device: Device to run the training on. Must be 'cpu' or 'cuda'
+  """
+  since = time()
+
+  best_model_wts = copy.deepcopy(model.state_dict())
+  best_acc = 0.0
+
+  for epoch in range(num_epochs):
+    print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+    print('-' * 10)
+
+    # Each epoch has a training and validation phase
+    for phase in ['train', 'validate']:
+      if phase == 'train':
+        model.train()  # Set model to training mode
+      else:
+        model.eval()   # Set model to evaluate mode
+
+      running_loss = 0.0
+      running_corrects = 0
+
+      # Iterate over data.
+      for inputs, labels in dataloaders[phase]:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        # zero the parameter gradients
+        optimizer.zero_grad()
+
+        # forward
+        # track history if only in train
+        with torch.set_grad_enabled(phase == 'train'):
+          outputs = model(inputs)
+          _, preds = torch.max(outputs, 1)
+          loss = criterion(outputs, labels)
+
+          # backward + optimize only if in training phase
+          if phase == 'train':
+            loss.backward()
+            optimizer.step()
+
+        # statistics
+        running_loss += loss.item() * inputs.size(0)
+        running_corrects += torch.sum(preds == labels.data)
+      if phase == 'train':
+        scheduler.step()
+
+      epoch_loss = running_loss / dataset_sizes[phase]
+      epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+      print('{} Loss: {:.4f} Acc: {:.4f}'.format(
+        phase, epoch_loss, epoch_acc))
+
+      # deep copy the model
+      if phase == 'validate' and epoch_acc > best_acc:
+        best_acc = epoch_acc
+        best_model_wts = copy.deepcopy(model.state_dict())
+
+    print()
+
+  time_elapsed = time() - since
+  print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+  print('Best val Acc: {:4f}'.format(best_acc))
+
+  # load best model weights
+  model.load_state_dict(best_model_wts)
+  return model
+
+def create_combined_model(model_fe):
+  # Step 1. Isolate the feature extractor.
+  model_fe_features = nn.Sequential(
+    model_fe.quant,  # Quantize the input
+    model_fe.conv1,
+    model_fe.bn1,
+    model_fe.relu,
+    model_fe.maxpool,
+    model_fe.layer1,
+    model_fe.layer2,
+    model_fe.layer3,
+    model_fe.layer4,
+    model_fe.avgpool,
+    model_fe.dequant,  # Dequantize the output
+  )
+
+  # Step 2. Create a new "head"
+  new_head = nn.Sequential(
+    nn.Dropout(p=0.5),
+    nn.Linear(num_ftrs, 2),
+  )
+
+  # Step 3. Combine, and don't forget the quant stubs.
+  new_model = nn.Sequential(
+    model_fe_features,
+    nn.Flatten(1),
+    new_head,
+  )
+  return new_model
+
+def imshow(inp, title=None):
+    """Display image for Tensor."""
+    inp = inp.numpy().transpose((1, 2, 0))
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    inp = std * inp + mean
+    inp = np.clip(inp, 0, 1)
+    plt.imshow(inp)
+    if title is not None:
+        plt.title(title)
+    plt.pause(0.001)  # pause a bit so that plots are updated
+
+def visualize_model_predictions(model,img_path):
+    was_training = model.training
+    model.eval()
+
+    img = Image.open(img_path).convert('RGB')
+    img = data_transforms['validate'](img)
+    img = img.unsqueeze(0)
+    img = img.to(device)
+
+    with torch.no_grad():
+        outputs = model(img)
+        _, preds = torch.max(outputs, 1)
+
+        ax = plt.subplot(2,2,1)
+        ax.axis('off')
+        ax.set_title(f'Predicted: {class_names[preds[0]]}')
+        imshow(img.cpu().data[0])
+
+        model.train(mode=was_training)
+        plt.show()
+
+if __name__ == '__main__':
+    # Set device to GPU if available, else CPU
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # Set up transforms that crop images, normalize them, and performs some flipping for training images
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+        'validate': transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+    }
+
+    # Create datasets with labels
+    image_datasets = {x: datasets.ImageFolder(x, data_transforms[x]) for x in ['train', 'validate']} # Training and validation for all items
+    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=4, shuffle=True, num_workers=4) for x in ['train', 'validate']}
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'validate']}
+    class_names = image_datasets['train'].classes
+    print(class_names)
+
+    quantized = True # Change which training is done based on whether we're doing quantization
+
+    # Get pre-built model
+    if quantized:
+        model_conv = qmodels.resnet18(weights='DEFAULT', progress=True, quantize=True)
+    else:
+        model_conv = models.resnet18(weights='IMAGENET1K_V1')
+
+    # Prep model for training by freezing layers
+    for param in model_conv.parameters():
+        param.requires_grad = False
+
+    # Parameters of newly constructed modules have requires_grad=True by default
+    num_ftrs = model_conv.fc.in_features
+    model_conv.fc = nn.Linear(num_ftrs, len(class_names))
+
+    if quantized:
+        new_model = create_combined_model(model_conv)
+        new_model = new_model.to('cpu')
+
+        criterion = nn.CrossEntropyLoss()
+
+        # Note that we are only training the head.
+        optimizer_ft = optim.SGD(new_model.parameters(), lr=0.01, momentum=0.9)
+
+        # Decay LR by a factor of 0.1 every 7 epochs
+        exp_lr_scheduler = optim.lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+
+        # Train the model
+        new_model = train_model(new_model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25, device='cpu')
+
+        # Convert the model to a quantized model
+        new_model = convert(new_model, inplace=False)
+
+        print("here")
+
+    else:
+        new_model = model_conv.to(device) # Put the model on CPU/ GPU for training
+
+        criterion = nn.CrossEntropyLoss() # Loss function for training
+
+        # Observe that only parameters of final layer are being optimized as opposed to before.
+        optimizer_conv = optim.SGD(new_model.fc.parameters(), lr=0.001, momentum=0.9)
+
+        # Decay LR by a factor of 0.1 every 7 epochs
+        exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
+
+        # Train the model
+        new_model = train_model(new_model, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25, device=device)
+
+        # Test the model with images from the internet
+        visualize_model_predictions(new_model, "pasta-test.jpg")
+        visualize_model_predictions(new_model, "can-test.jpg")
+
+    if quantized:
+        # Save model for Raspberry Pi
+        scripted_model = torch.jit.script(new_model)
+        mobile_model = optimize_for_mobile(scripted_model)
+        mobile_model._save_for_lite_interpreter("mobile_model_quantized.ptl")
+
+        # Save model for computer
+        torch.save(model_conv, "full_model_quantized.pth")
+
+    else:
+        # Save model for Raspberry Pi
+        scripted_model = torch.jit.script(new_model)
+        mobile_model = optimize_for_mobile(scripted_model)
+        mobile_model._save_for_lite_interpreter("mobile_model_original.ptl")
+
+        # Save model for computer
+        torch.save(model_conv, "full_model_original.pth")
