@@ -1,4 +1,4 @@
-# Based off of code from here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html, https://pytorch.org/tutorials/intermediate/quantized_transfer_learning_tutorial.html
+# Based off of code from here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html, https://pytorch.org/tutorials/intermediate/quantized_transfer_learning_tutorial.html, 
 import torch
 from torch import nn
 from torchvision import models, transforms, datasets
@@ -7,6 +7,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.mobile_optimizer import optimize_for_mobile
 from torch.quantization import convert
+from torch.nn.utils import prune
 
 from time import time
 import copy
@@ -182,59 +183,61 @@ if __name__ == '__main__':
     class_names = image_datasets['train'].classes
     print(class_names)
 
-    quantized = True # Change which training is done based on whether we're doing quantization
+    optimizations = ["Quantization", 'Pruning']
+    optimization = optimizations[1] # Change which training is done based on whether we're doing quantization
 
     # Get pre-built model
-    if quantized:
-        model_conv = qmodels.resnet18(weights='DEFAULT', progress=True, quantize=True)
+    if optimization == "Quantization":
+      model_conv = qmodels.resnet18(weights='DEFAULT', progress=True, quantize=True)
+    
     else:
-        model_conv = models.resnet18(weights='IMAGENET1K_V1')
+      model_conv = models.resnet18(weights='IMAGENET1K_V1') # For both pruning and unoptimized
 
     # Prep model for training by freezing layers
     for param in model_conv.parameters():
-        param.requires_grad = False
+      param.requires_grad = False
 
     # Parameters of newly constructed modules have requires_grad=True by default
     num_ftrs = model_conv.fc.in_features
     model_conv.fc = nn.Linear(num_ftrs, len(class_names))
 
-    if quantized:
-        new_model = create_combined_model(model_conv)
-        new_model = new_model.to('cpu')
+    if optimization == "Quantization":
+      new_model = create_combined_model(model_conv)
+      new_model = new_model.to('cpu')
 
-        criterion = nn.CrossEntropyLoss()
+      criterion = nn.CrossEntropyLoss()
 
-        # Note that we are only training the head.
-        optimizer_ft = optim.SGD(new_model.parameters(), lr=0.01, momentum=0.9)
+      # Note that we are only training the head.
+      optimizer_ft = optim.SGD(new_model.parameters(), lr=0.01, momentum=0.9)
 
-        # Decay LR by a factor of 0.1 every 7 epochs
-        exp_lr_scheduler = optim.lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+      # Decay LR by a factor of 0.1 every 7 epochs
+      exp_lr_scheduler = optim.lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-        # Train the model
-        new_model = train_model(new_model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25, device='cpu')
+      # Train the model
+      new_model = train_model(new_model, criterion, optimizer_ft, exp_lr_scheduler, num_epochs=25, device='cpu')
 
-        # Convert the model to a quantized model
-        new_model = convert(new_model, inplace=False)
-
+      # Convert the model to a quantized model
+      new_model = convert(new_model, inplace=False)
+    
     else:
-        new_model = model_conv.to(device) # Put the model on CPU/ GPU for training
+      new_model = model_conv.to(device) # Put the model on CPU/ GPU for training
 
-        criterion = nn.CrossEntropyLoss() # Loss function for training
+      criterion = nn.CrossEntropyLoss() # Loss function for training
 
-        # Observe that only parameters of final layer are being optimized as opposed to before.
-        optimizer_conv = optim.SGD(new_model.fc.parameters(), lr=0.001, momentum=0.9)
+      # Observe that only parameters of final layer are being optimized as opposed to before.
+      optimizer_conv = optim.SGD(new_model.fc.parameters(), lr=0.001, momentum=0.9)
 
-        # Decay LR by a factor of 0.1 every 7 epochs
-        exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
+      # Decay LR by a factor of 0.1 every 7 epochs
+      exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
 
-        # Train the model
-        new_model = train_model(new_model, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25, device=device)
+      # Train the model
+      new_model = train_model(new_model, criterion, optimizer_conv, exp_lr_scheduler, num_epochs=25, device=device)
 
-        # Test the model with images from the internet
-        visualize_model_predictions(new_model, "pasta-test.jpg")
-        visualize_model_predictions(new_model, "can-test.jpg")
+    # Test the model with images from the internet
+    visualize_model_predictions(new_model, "pasta-test.jpg")
+    visualize_model_predictions(new_model, "can-test.jpg")
 
-    if quantized:
+    if optimization == "Quantization":
         # Save model for Raspberry Pi
         scripted_model = torch.jit.script(new_model)
         mobile_model = optimize_for_mobile(scripted_model)
@@ -242,14 +245,41 @@ if __name__ == '__main__':
 
         # Save model for computer
         torch.jit.save(scripted_model, "full_model_quantized.pth")
-
+    
     else:
+      # Save model for Raspberry Pi
+      scripted_model = torch.jit.script(new_model)
+      mobile_model = optimize_for_mobile(scripted_model)
+      mobile_model._save_for_lite_interpreter("mobile_model_original.ptl")
+
+      # Save model for computer
+      torch.save(new_model, "full_model_original.pth")
+
+      if optimization == "Pruning":
+        parameters_to_prune = ( # Pick some modules to prune
+            (new_model.layer2[1].conv1, "weight"),
+            (new_model.layer2[1].conv2, "weight"),
+            (new_model.layer4[1].conv1, "weight"),
+            (new_model.layer4[1].conv2, "weight"),
+          )
+
+        # Apply global unstructured pruning to selected layers
+        prune.global_unstructured(parameters_to_prune, pruning_method=prune.L1Unstructured, amount=.2) 
+        
+        for module in parameters_to_prune:
+          prune.remove(module[0], module[1]) # Makes the pruning permanent
+
+        # Test the model with images from the internet
+        visualize_model_predictions(new_model, "pasta-test.jpg")
+        visualize_model_predictions(new_model, "can-test.jpg")
+        
         # Save model for Raspberry Pi
-        scripted_model = torch.jit.script(new_model)
-        mobile_model = optimize_for_mobile(scripted_model)
-        mobile_model._save_for_lite_interpreter("mobile_model_original.ptl")
+        scripted_model_pruned = torch.jit.script(new_model)
+        mobile_model_pruned = optimize_for_mobile(scripted_model_pruned)
+        mobile_model_pruned._save_for_lite_interpreter("mobile_model_pruned.ptl")
 
         # Save model for computer
-        torch.save(model_conv, "full_model_original.pth")
-
-# https://pytorch.org/tutorials/intermediate/dynamic_quantization_bert_tutorial.html#serialize-the-quantized-model
+        torch.save(new_model, "full_model_pruned.pth")
+    
+# for layer_name, param in new_model.named_parameters(): # Look at different modules here
+#   print(f"layer name: {layer_name} has {param.shape}")
