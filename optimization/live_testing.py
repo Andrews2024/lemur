@@ -21,10 +21,17 @@ def predict_from_im(model, transform, image):
         
 if __name__ == '__main__':
     # Set up GPU
+<<<<<<< HEAD
     device = device("cpu")
 
     # Load model that we trained
     model = load("mobile_model_quantized.ptl", map_location=device('cpu')).to(device)
+=======
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # Load model that we trained
+    model = torch.jit.load("mobile_model.ptl", map_location=torch.device('cpu')).to(device)
+>>>>>>> parent of e2d0681 (Switched to quantized model and shrunk image by half each dimension)
     model.eval()
 
     # Use the same transforms as validation
@@ -47,7 +54,10 @@ if __name__ == '__main__':
 
     while rval:
         rval, frame = vc.read()
+<<<<<<< HEAD
         frame = resize(frame, (0,0), fx=0.5, fy=0.5)
+=======
+>>>>>>> parent of e2d0681 (Switched to quantized model and shrunk image by half each dimension)
         
         imshow("Detection", frame)
         predict_from_im(model, data_transforms, frame)
