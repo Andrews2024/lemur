@@ -19,11 +19,13 @@ def predict_from_im(model, transform, image):
         print(f"Prediction: {preds}")
         
 if __name__ == '__main__':
-    # Set up GPU
+    torch.backends.quantized.engine = 'qnnpack'
+    
+    # Set up CPU
     device = torch.device("cpu")
 
     # Load model that we trained
-    model = torch.jit.load("mobile_model_original.ptl", map_location=torch.device('cpu')).to(device)
+    model = torch.jit.load("mobile_model_quantized.ptl", map_location=torch.device('cpu')).to(device)
     model.eval()
 
     # Use the same transforms as validation
