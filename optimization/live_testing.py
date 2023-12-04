@@ -20,10 +20,10 @@ def predict_from_im(model, transform, image):
         
 if __name__ == '__main__':
     # Set up GPU
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
 
     # Load model that we trained
-    model = torch.jit.load("mobile_model.ptl", map_location=torch.device('cpu')).to(device)
+    model = torch.jit.load("mobile_model_quantized.ptl", map_location=torch.device('cpu')).to(device)
     model.eval()
 
     # Use the same transforms as validation
@@ -46,6 +46,7 @@ if __name__ == '__main__':
 
     while rval:
         rval, frame = vc.read()
+        frame = cv.resize(frame, (0,0), fx=0.5, fy=0.5)
         
         cv.imshow("Detection", frame)
         predict_from_im(model, data_transforms, frame)
