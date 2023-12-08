@@ -17,10 +17,36 @@ def predict_from_im(model, transform, image):
     with torch.no_grad():
         outputs = model(img)
         _, preds = torch.max(outputs, 1)
-        #print(f"Prediction: {preds[0]}")
+        
+        return preds[0]
 
-def get_prediction_timed():
-    pass
+def get_prediction_counts(model, data_transforms):
+    # Set up the camera
+    vc = cv.VideoCapture(0)
+
+    if vc.isOpened(): # try to get the first frame
+        rval, frame = vc.read()
+    else:
+        rval = False
+
+    # Keep list the length the number of categories
+    inferences = [0, 0]
+
+    while rval:
+        rval, frame = vc.read()
+        frame = cv.resize(frame, (0,0), fx=0.5, fy=0.5)
+        
+        cv.imshow("Detection", frame)
+        prediction = predict_from_im(model, data_transforms, frame)
+        inferences[prediction] += 1 # Add to count of that category
+
+        if cv.waitKey(1) == 27: # exit on ESC
+            break
+
+    vc.release()
+    cv.destroyAllWindows()
+
+    return inferences
 
 def get_prediction_fps(model, data_transforms):
     # Set up the camera
@@ -68,7 +94,7 @@ if __name__ == '__main__':
     device = torch.device("cpu")
 
     # Load model that we trained
-    model = torch.jit.load(model_files[0], map_location=torch.device('cpu')).to(device)
+    model = torch.jit.load(model_files[1], map_location=torch.device('cpu')).to(device)
     model.eval()
 
     # Use the same transforms as validation
@@ -85,3 +111,5 @@ if __name__ == '__main__':
     get_prediction_fps(model, data_transforms)
 
     # Get counts of each prediction (e.g. # pred = 0 vs. # pred = 1)
+    counts = get_prediction_counts(model, data_transforms)
+    print(counts)
